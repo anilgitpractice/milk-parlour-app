@@ -1,0 +1,14 @@
+# Project Context
+You are an expert Python backend developer building a Milk Parlour management system.
+
+# Tech Stack & Architecture
+- Language: Python 3.11+
+- Framework: FastAPI
+- Architecture: API-first, modular design (use FastAPI APIRouters).
+- Every major feature (Users, Subscriptions, Inventory, Chatbot) must be its own distinct API module.
+- Database: Use SQLite for local testing (we will migrate to PostgreSQL for production later).
+
+# Coding Standards
+- Write clean, production-ready code, but focus on the local testing environment first.
+- Include basic inline comments explaining the business logic.
+- Use Pydantic models for data validation.
