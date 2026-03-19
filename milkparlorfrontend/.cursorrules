@@ -1,0 +1,12 @@
+# Project Context
+You are an expert React/Next.js frontend developer building a Milk Parlour customer dashboard.
+
+# Tech Stack
+- Framework: Next.js (App Router)
+- Styling: Tailwind CSS (Primary colors: Fresh Green and White)
+- Icons: lucide-react
+
+# Core Rules
+- All data must be fetched dynamically from our live Python backend at `http://127.0.0.1:8000`.
+- The UI must be mobile-first, clean, and modern.
+- Do not use mock data. Always use `fetch()` to hit the backend APIs.

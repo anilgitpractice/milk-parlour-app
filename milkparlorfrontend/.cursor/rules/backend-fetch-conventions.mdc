@@ -1,0 +1,13 @@
+---
+description: Fetch conventions for the Python backend (127.0.0.1:8000)
+globs: **/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Backend fetch conventions
+
+- Use `fetch()` (native) for backend calls; do not add axios unless requested.
+- Base URL is `http://127.0.0.1:8000` (do not hardcode any other host).
+- Prefer typed helpers for consistency (e.g., `get<T>()`, `post<T>()`) and centralize request config.
+- Handle non-2xx responses explicitly (check `res.ok`) and surface meaningful errors to the UI.
+- Avoid caching bugs: pick appropriate `cache` / `next` options per endpoint (default to no-store for frequently changing dashboard data).

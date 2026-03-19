@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>App Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-50 h-screen flex flex-col md:flex-row font-sans text-slate-800">
+
+  <aside class="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 h-full z-20">
+    <div class="p-6 text-xl font-bold text-indigo-600 tracking-wide border-b border-slate-100">Dashboard</div>
+    <nav class="flex-1 p-4 space-y-1">
+      <button onclick="navigate('home')" class="w-full flex items-center p-3 text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg transition-colors font-medium"><i class="fas fa-chart-pie w-6"></i> Home</button>
+      <button onclick="navigate('orders')" class="w-full flex items-center p-3 text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg transition-colors font-medium"><i class="fas fa-box w-6"></i> Orders</button>
+      <button onclick="navigate('customers')" class="w-full flex items-center p-3 text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg transition-colors font-medium"><i class="fas fa-users w-6"></i> Customers</button>
+    </nav>
+  </aside>
+
+  <main class="flex-1 flex flex-col h-full overflow-hidden relative">
+    <header class="bg-white border-b border-slate-200 p-4 flex justify-between items-center z-10">
+      <h1 id="page-title" class="text-lg font-semibold text-slate-800">Home</h1>
+      <div class="w-9 h-9 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold text-sm border border-indigo-200 shadow-sm cursor-pointer">Admin</div>
+    </header>
+
+    <div id="app-content" class="p-4 md:p-8 overflow-y-auto flex-1 pb-24 md:pb-8">
+      </div>
+  </main>
+
+  <nav class="md:hidden fixed bottom-0 w-full bg-white border-t border-slate-200 flex justify-around p-2 z-50 pb-safe">
+    <button onclick="navigate('home')" class="flex flex-col items-center text-slate-500 hover:text-indigo-600 p-2"><i class="fas fa-chart-pie text-xl mb-1"></i><span class="text-[10px] font-medium">Home</span></button>
+    <button onclick="navigate('orders')" class="flex flex-col items-center text-slate-500 hover:text-indigo-600 p-2"><i class="fas fa-box text-xl mb-1"></i><span class="text-[10px] font-medium">Orders</span></button>
+    <button onclick="navigate('customers')" class="flex flex-col items-center text-slate-500 hover:text-indigo-600 p-2"><i class="fas fa-users text-xl mb-1"></i><span class="text-[10px] font-medium">Customers</span></button>
+  </nav>
+
+  <script>
+    // 1. API Configuration
+    const API_BASE = "http://127.0.0.1:8000";
+
+    // 2. View Templates
+    const views = {
+      home: `
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+          <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
+            <h3 class="text-slate-500 text-xs font-semibold uppercase tracking-wider">Total Revenue</h3>
+            <p id="revenue-display" class="text-2xl font-bold text-slate-800 mt-2">₹...</p>
+          </div>
+          <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
+            <h3 class="text-slate-500 text-xs font-semibold uppercase tracking-wider">Pending Orders</h3>
+            <p id="orders-display" class="text-2xl font-bold text-slate-800 mt-2">...</p>
+          </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+          <h2 class="text-lg font-semibold mb-4">Backend Connection Status</h2>
+          <button onclick="testBackend()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow-sm hover:bg-indigo-700 transition-colors text-sm font-medium">Ping Server</button>
+          <div id="api-status" class="mt-4 p-3 bg-slate-50 rounded text-sm text-slate-600 font-mono hidden"></div>
+        </div>
+      `,
+      orders: `
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 mb-6">
+          <h2 class="text-lg font-semibold mb-4">Create New Order</h2>
+          <form id="add-order-form" onsubmit="submitOrder(event)" class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <input type="text" id="order-customer" placeholder="Customer Name" required class="p-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500">
+            <select id="order-item" class="p-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 bg-white">
+              <option value="1L Full Cream Milk">1L Full Cream Milk</option>
+              <option value="500ml Toned Milk">500ml Toned Milk</option>
+              <option value="250g Paneer">250g Paneer</option>
+            </select>
+            <select id="order-status" class="p-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 bg-white">
+              <option value="Pending">Pending</option>
+              <option value="Delivered">Delivered</option>
+              <option value="Cancelled">Cancelled</option>
+            </select>
+            <button type="submit" class="bg-indigo-600 text-white font-medium rounded-lg p-2 hover:bg-indigo-700 transition-colors text-sm">Save Order</button>
+          </form>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+          <h2 class="text-lg font-semibold mb-4">Today's Orders</h2>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="border-b border-slate-200 text-slate-500 text-sm">
+                  <th class="p-3 font-medium">Order ID</th>
+                  <th class="p-3 font-medium">Customer</th>
+                  <th class="p-3 font-medium">Item</th>
+                  <th class="p-3 font-medium">Status</th>
+                  <th class="p-3 font-medium text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="orders-table-body" class="text-sm">
+                <tr><td colspan="5" class="p-4 text-center text-slate-500">Loading orders...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `,
+      customers: `
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 mb-6">
+          <h2 class="text-lg font-semibold mb-4">Add New Customer</h2>
+          <form id="add-customer-form" onsubmit="submitCustomer(event)" class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <input type="text" id="cust-name" placeholder="Full Name" required class="p-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500">
+            <input type="text" id="cust-phone" placeholder="Phone Number" required class="p-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500">
+            <select id="cust-sub" class="p-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 bg-white">
+              <option value="Daily 1L">Daily 1L</option>
+              <option value="Daily 500ml">Daily 500ml</option>
+              <option value="Alternate Days 1L">Alternate Days 1L</option>
+            </select>
+            <button type="submit" class="bg-indigo-600 text-white font-medium rounded-lg p-2 hover:bg-indigo-700 transition-colors text-sm">Save Customer</button>
+          </form>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+          <h2 class="text-lg font-semibold mb-4">Customer Directory</h2>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="border-b border-slate-200 text-slate-500 text-sm">
+                  <th class="p-3 font-medium">Name</th>
+                  <th class="p-3 font-medium">Phone</th>
+                  <th class="p-3 font-medium">Subscription</th>
+                  <th class="p-3 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody id="customers-table-body" class="text-sm">
+                <tr><td colspan="4" class="p-4 text-center text-slate-500">Loading customers...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `
+    };
+
+
+    async function loadDashboardStats() {
+      try {
+        const response = await fetch(`${API_BASE}/api/dashboard-stats`);
+        if (response.ok) {
+          const data = await response.json();
+          document.getElementById('revenue-display').innerText = `₹${data.total_revenue.toFixed(2)}`;
+          document.getElementById('orders-display').innerText = data.pending_orders;
+        }
+      } catch (error) {
+        console.error("Failed to load stats:", error);
+      }
+    }
+
+    async function loadOrders() {
+      const tbody = document.getElementById('orders-table-body');
+      if (!tbody) return;
+
+      tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-500">Loading orders...</td></tr>`;
+
+      try {
+        const response = await fetch(`${API_BASE}/api/orders`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+        const orders = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
+
+        if (!orders.length) {
+          tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-500">No orders found.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = '';
+
+        orders.forEach(order => {
+          let statusColor = 'bg-yellow-100 text-yellow-800'; 
+          if (order.status === 'Delivered') statusColor = 'bg-emerald-100 text-emerald-800';
+          if (order.status === 'Cancelled') statusColor = 'bg-red-100 text-red-800';
+
+          let actionButton = '';
+          if (order.status === 'Pending') {
+            actionButton = `<button onclick="updateOrderStatus(${order.id}, 'Delivered')" class="text-xs bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg font-semibold transition-colors">Mark Delivered</button>`;
+          }
+
+          tbody.innerHTML += `
+            <tr class="border-b border-slate-50 hover:bg-slate-50">
+              <td class="p-3 text-slate-600">#${order.id}</td>
+              <td class="p-3 font-medium text-slate-800">${order.customer_name}</td>
+              <td class="p-3 text-slate-600">${order.item}</td>
+              <td class="p-3">
+                <span class="px-2 py-1 rounded-full text-xs font-semibold ${statusColor}">${order.status}</span>
+              </td>
+              <td class="p-3 text-right">${actionButton}</td>
+            </tr>
+          `;
+        });
+      } catch (error) {
+        console.error('Failed to load orders:', error);
+        tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-red-600">Failed to load orders.</td></tr>`;
+      }
+    }
+
+    async function updateOrderStatus(orderId, newStatus) {
+      try {
+        const response = await fetch(`${API_BASE}/api/orders/${orderId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+
+        if (response.ok) {
+          loadOrders(); // Refresh the table
+          loadDashboardStats(); // Refresh the revenue numbers!
+        } else {
+          alert("Failed to update order.");
+        }
+      } catch (error) {
+        console.error("Error updating order:", error);
+      }
+    }
+
+    async function submitOrder(event) {
+      event.preventDefault();
+      
+      const newOrder = {
+        customer_name: document.getElementById('order-customer').value,
+        item: document.getElementById('order-item').value,
+        status: document.getElementById('order-status').value
+      };
+
+      try {
+        const response = await fetch(`${API_BASE}/api/orders`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newOrder)
+        });
+
+        if (response.ok) {
+          document.getElementById('add-order-form').reset();
+          loadOrders();
+        }
+      } catch (error) {
+        console.error("Failed to add order:", error);
+      }
+    }
+
+    async function loadCustomers() {
+      try {
+        const response = await fetch(`${API_BASE}/api/customers`);
+        if (response.ok) {
+          const customers = await response.json();
+          const tbody = document.getElementById('customers-table-body');
+          tbody.innerHTML = ''; 
+          
+          customers.forEach(customer => {
+            let statusColor = customer.status === 'Active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-800';
+
+            tbody.innerHTML += `
+              <tr class="border-b border-slate-50 hover:bg-slate-50">
+                <td class="p-3 font-medium text-slate-800">${customer.name}</td>
+                <td class="p-3 text-slate-600">${customer.phone}</td>
+                <td class="p-3 text-slate-600">${customer.subscription}</td>
+                <td class="p-3">
+                  <span class="px-2 py-1 rounded-full text-xs font-semibold ${statusColor}">${customer.status}</span>
+                </td>
+              </tr>
+            `;
+          });
+        }
+      } catch (error) {
+        console.error("Failed to load customers:", error);
+      }
+    }
+
+    async function submitCustomer(event) {
+      event.preventDefault(); // Stop page from reloading
+      
+      const newCustomer = {
+        name: document.getElementById('cust-name').value,
+        phone: document.getElementById('cust-phone').value,
+        subscription: document.getElementById('cust-sub').value
+      };
+
+      try {
+        const response = await fetch(`${API_BASE}/api/customers`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newCustomer)
+        });
+
+        if (response.ok) {
+          // Clear the form
+          document.getElementById('add-customer-form').reset();
+          // Reload the table to show the new user!
+          loadCustomers();
+        }
+      } catch (error) {
+        console.error("Failed to add customer:", error);
+      }
+    }
+
+    // 3. Navigation Logic
+    function navigate(page) {
+      document.getElementById('app-content').innerHTML = views[page];
+      document.getElementById('page-title').innerText = page.charAt(0).toUpperCase() + page.slice(1);
+      
+      if (page === 'home') {
+        loadDashboardStats();
+      } else if (page === 'orders') {
+        loadOrders();
+      } else if (page === 'customers') {
+        loadCustomers();
+      }
+    }
+
+    // 4. Real Fetch Request to Backend
+    async function testBackend() {
+      const statusBox = document.getElementById('api-status');
+      statusBox.classList.remove('hidden');
+      statusBox.innerHTML = `Attempting fetch to <span class="text-blue-600">${API_BASE}/</span>...`;
+      
+      try {
+        const response = await fetch(`${API_BASE}/`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' }
+        }); 
+        
+        if (response.ok) {
+          const data = await response.json();
+          statusBox.innerHTML = `<span class="text-emerald-600 font-bold">✓ Success!</span><br>Status: ${response.status}<br>Response: ${JSON.stringify(data)}`;
+        } else {
+          statusBox.innerHTML = `<span class="text-red-600 font-bold">✗ Error!</span><br>Status: ${response.status} ${response.statusText}`;
+        }
+      } catch (error) {
+        statusBox.innerHTML = `<span class="text-red-600 font-bold">✗ Fetch Failed!</span><br>Error: ${error.message}<br><br><span class="text-xs text-slate-500">Hint: Make sure your backend is running on port 8000 and CORS is enabled.</span>`;
+      }
+    }
+
+    // Initialize app on load
+    navigate('home');
+  </script>
+</body>
+</html>

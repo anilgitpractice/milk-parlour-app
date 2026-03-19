@@ -1,0 +1,16 @@
+---
+description: Milk Parlour dashboard core context and UI rules
+alwaysApply: true
+---
+
+# Milk Parlour Customer Dashboard (Next.js)
+
+- Use **Next.js App Router** with **TypeScript** and **Tailwind CSS**.
+- Visual style is **mobile-first**, clean, modern, using **Fresh Green + White** as primary colors.
+- Use **`lucide-react`** for icons (avoid other icon packs unless asked).
+
+## Data rules (no mock data)
+
+- Never use mock/static placeholder data for real screens.
+- All data must be fetched from the live Python backend at `http://127.0.0.1:8000`.
+- Prefer server-side fetching in server components when possible; use client fetching only when necessary (interactions, real-time updates).
