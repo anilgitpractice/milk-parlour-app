@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Profile - Shiva Balaji Milk Center</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans">
+  
+  <nav class="bg-indigo-600 text-white p-4 shadow-md">
+    <div class="max-w-4xl mx-auto flex justify-between items-center">
+      <h1 class="text-xl font-bold flex items-center gap-2">
+        <span class="bg-white text-indigo-600 px-2 py-0.5 rounded text-sm">SB</span>
+        Shiva Balaji Milk Center
+      </h1>
+      <a href="store.html" class="text-sm bg-indigo-700 hover:bg-indigo-800 px-4 py-2 rounded-lg transition font-medium">
+        &larr; Back to Store
+      </a>
+    </div>
+  </nav>
+
+  <main class="max-w-xl mx-auto p-6 mt-10">
+    <div class="bg-white p-8 rounded-xl shadow-sm border border-slate-200">
+      <h2 class="text-2xl font-extrabold text-slate-800 mb-2">My Profile</h2>
+      <p class="text-sm text-slate-500 mb-8">Update your personal information and password.</p>
+
+      <form id="profile-form" onsubmit="handleUpdateProfile(event)" class="space-y-5">
+        
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1">Registered Phone Number</label>
+          <input type="text" id="prof-phone" disabled class="w-full p-3 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-500 cursor-not-allowed">
+          <p class="text-xs text-slate-400 mt-1">Phone numbers cannot be changed. Contact support if you lost access.</p>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1">Full Name</label>
+          <input type="text" id="prof-name" required class="w-full p-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+        </div>
+
+        <div class="pt-4 border-t border-slate-100">
+          <label class="block text-sm font-semibold text-slate-700 mb-1">New Password (Optional)</label>
+          <input type="password" id="prof-pass" placeholder="Leave blank to keep current password" class="w-full p-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+        </div>
+
+        <button type="submit" class="w-full bg-indigo-600 text-white font-bold rounded-lg p-3 mt-4 hover:bg-indigo-700 transition-colors">
+          Save Changes
+        </button>
+      </form>
+    </div>
+  </main>
+
+  <script>
+    const API_BASE = "http://localhost:8000";
+
+    // 1. Load current user data when page opens
+    window.onload = () => {
+      const userStr = localStorage.getItem('milk_user');
+      if (!userStr) {
+        window.location.href = 'login.html';
+        return;
+      }
+      const user = JSON.parse(userStr);
+      document.getElementById('prof-name').value = user.name;
+      document.getElementById('prof-phone').value = user.phone;
+    };
+
+    // 2. Handle form submission
+    async function handleUpdateProfile(event) {
+      event.preventDefault();
+      
+      const currentPhone = document.getElementById('prof-phone').value;
+      const newName = document.getElementById('prof-name').value;
+      const newPass = document.getElementById('prof-pass').value;
+
+      try {
+        const response = await fetch(`${API_BASE}/api/users/profile`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            current_phone: currentPhone, 
+            new_name: newName, 
+            new_password: newPass || null 
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          // Update the browser's memory with the new name
+          localStorage.setItem('milk_user', JSON.stringify({ name: data.name, phone: data.phone }));
+          alert("Success! Your profile has been updated.");
+          window.location.href = 'store.html'; // Send them back to the store
+        } else {
+          alert("Failed to update profile. Please try again.");
+        }
+      } catch (error) {
+        console.error("Error:", error);
+        alert("Server connection error.");
+      }
+    }
+  </script>
+</body>
+</html>

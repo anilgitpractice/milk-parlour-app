@@ -5,8 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>App Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
+<header class="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-10">
+  <div class="max-w-6xl mx-auto p-4 flex justify-between items-center">
+    <h1 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+      <span class="bg-indigo-600 text-white p-1.5 rounded-lg">MP</span>
+      Milk Parlour Admin
+    </h1>
+    <button onclick="adminLogout()" class="text-sm font-semibold text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg transition">Logout</button>
+  </div>
+</header>
 <body class="bg-slate-50 h-screen flex flex-col md:flex-row font-sans text-slate-800">
 
   <aside class="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 h-full z-20">
@@ -35,6 +45,16 @@
   </nav>
 
   <script>
+    // SECURITY CHECK: Kick out unauthorized users immediately
+    if (localStorage.getItem('milk_admin_auth') !== 'true') {
+      window.location.href = 'admin-login.html';
+    }
+
+    // Add a logout function
+    function adminLogout() {
+      localStorage.removeItem('milk_admin_auth');
+      window.location.href = 'admin-login.html';
+    }
     // 1. API Configuration
     const API_BASE = "http://127.0.0.1:8000";
 
@@ -51,6 +71,10 @@
             <p id="orders-display" class="text-2xl font-bold text-slate-800 mt-2">...</p>
           </div>
         </div>
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 mt-6">
+        <h3 class="text-lg font-bold text-slate-800 mb-4">Sales by Product</h3>
+        <canvas id="salesChart" height="80"></canvas>
+      </div>
 
         <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
           <h2 class="text-lg font-semibold mb-4">Backend Connection Status</h2>
@@ -168,14 +192,25 @@
         tbody.innerHTML = '';
 
         orders.forEach(order => {
-          let statusColor = 'bg-yellow-100 text-yellow-800'; 
-          if (order.status === 'Delivered') statusColor = 'bg-emerald-100 text-emerald-800';
-          if (order.status === 'Cancelled') statusColor = 'bg-red-100 text-red-800';
+          let statusColor = 'bg-yellow-100 text-yellow-800'; // Pending
+        if (order.status === 'Accepted') statusColor = 'bg-blue-100 text-blue-800';
+        if (order.status === 'Delivered') statusColor = 'bg-emerald-100 text-emerald-800';
+        if (order.status === 'Cancelled' || order.status === 'Rejected') statusColor = 'bg-red-100 text-red-800';
 
-          let actionButton = '';
-          if (order.status === 'Pending') {
-            actionButton = `<button onclick="updateOrderStatus(${order.id}, 'Delivered')" class="text-xs bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg font-semibold transition-colors">Mark Delivered</button>`;
-          }
+        let actionButton = '';
+        
+        // 1. If Pending, show Accept and Reject
+        if (order.status === 'Pending') {
+          actionButton = `
+            <div class="flex justify-end gap-2">
+              <button onclick="updateOrderStatus(${order.id}, 'Accepted')" class="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg font-semibold transition-colors">Accept</button>
+              <button onclick="updateOrderStatus(${order.id}, 'Rejected')" class="text-xs bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-lg font-semibold transition-colors">Reject</button>
+            </div>`;
+        } 
+        // 2. If Accepted, show Mark Delivered
+        else if (order.status === 'Accepted') {
+          actionButton = `<button onclick="updateOrderStatus(${order.id}, 'Delivered')" class="text-xs bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg font-semibold transition-colors">Mark Delivered</button>`;
+        }
 
           tbody.innerHTML += `
             <tr class="border-b border-slate-50 hover:bg-slate-50">
@@ -333,6 +368,59 @@
 
     // Initialize app on load
     navigate('home');
+    let myChart = null; // Keep track of the chart so we can update it
+
+    async function loadChart() {
+      try {
+        const response = await fetch(`${API_BASE}/api/orders`);
+        if (!response.ok) return;
+        const orders = await response.json();
+
+        // 1. Count how many of each item were ordered
+        const itemCounts = {};
+        orders.forEach(order => {
+          itemCounts[order.item] = (itemCounts[order.item] || 0) + 1;
+        });
+
+        const labels = Object.keys(itemCounts);
+        const data = Object.values(itemCounts);
+
+        // 2. Find the canvas and draw the chart!
+        const ctx = document.getElementById('salesChart');
+        if (!ctx) return; 
+
+        // Destroy the old chart if it exists before drawing a new one
+        if (myChart) myChart.destroy();
+
+        myChart = new Chart(ctx.getContext('2d'), {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Number of Orders',
+              data: data,
+              backgroundColor: 'rgba(79, 70, 229, 0.8)', // Beautiful Indigo color
+              borderColor: 'rgba(67, 56, 202, 1)',
+              borderWidth: 1,
+              borderRadius: 6 // Rounds the top of the bars
+            }]
+          },
+          options: {
+            responsive: true,
+            scales: {
+              y: { 
+                beginAtZero: true,
+                ticks: { stepSize: 1 } // Only show whole numbers
+              }
+            }
+          }
+        });
+      } catch (error) {
+        console.error("Error loading chart:", error);
+      }
+    }
+    loadDashboardStats()
+    loadChart();
   </script>
 </body>
 </html>

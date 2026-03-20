@@ -21,7 +21,15 @@ class CustomerCreate(BaseModel):
     name: str
     phone: str
     subscription: str
+    
+class ProfileUpdate(BaseModel):
+    current_phone: str
+    new_name: str
+    new_password: str = None  # Optional, in case they only want to change their name
 
+class AdminLogin(BaseModel):
+    username: str
+    password: str
 
 class OrderCreate(BaseModel):
     customer_name: str
@@ -141,6 +149,13 @@ def pause_subscription(req: PauseRequest, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Subscription paused successfully"}
 
+@app.post("/api/admin/login")
+def admin_login(admin: AdminLogin):
+    # The Master Credentials for your Admin Dashboard
+    if admin.username == "admin" and admin.password == "Parlour2026!":
+        return {"message": "Welcome back, Boss!", "role": "admin"}
+    raise HTTPException(status_code=401, detail="Invalid admin credentials")    
+
 @app.put("/api/orders/{order_id}")
 def update_order_status(order_id: int, order_update: OrderUpdate, db: Session = Depends(get_db)):
     db_order = db.query(models.Order).filter(models.Order.id == order_id).first()
@@ -213,4 +228,25 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Invalid phone number or password")
 
     return {"message": "Login successful", "user_name": db_user.name, "phone": db_user.phone}
-
+@app.put("/api/users/profile")
+def update_profile(profile: ProfileUpdate, db: Session = Depends(get_db)):
+    # 1. Find the user in the auth table
+    user = db.query(models.User).filter(models.User.phone == profile.current_phone).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # 2. Update their name
+    user.name = profile.new_name
+    
+    # 3. Update password only if they typed a new one
+    if profile.new_password:
+        user.hashed_password = pwd_context.hash(profile.new_password)
+        
+    # 4. Sync the new name to the Admin Customers table!
+    customer = db.query(models.Customer).filter(models.Customer.phone == profile.current_phone).first()
+    if customer:
+        customer.name = profile.new_name
+        
+    db.commit()
+    return {"message": "Profile updated successfully", "name": user.name, "phone": user.phone}
+    
