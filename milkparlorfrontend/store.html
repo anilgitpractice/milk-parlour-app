@@ -79,13 +79,20 @@
       <div class="col-span-full text-center text-slate-500 py-10">Loading products...</div>
     </div>
 
-    <h2 id="my-orders-section" class="text-2xl font-bold text-slate-800 mt-12 mb-6 border-t pt-8 border-slate-200">My Orders</h2>
-    <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+    <div class="flex justify-between items-center mt-12 mb-6 border-t pt-8 border-slate-200">
+      <h2 id="my-orders-section" class="text-2xl font-bold text-slate-800">My Orders</h2>
+      <button onclick="toggleOrdersTable()" id="toggle-orders-btn" class="text-slate-500 hover:text-indigo-600 transition-colors flex items-center gap-2 text-sm font-semibold bg-slate-100 px-3 py-1.5 rounded-lg">
+        <span>Hide</span>
+        <svg class="w-4 h-4 transition-transform duration-300" id="toggle-orders-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path></svg>
+      </button>
+    </div>
+
+    <div id="orders-table-container" class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden transition-all duration-300">
       <div class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
           <thead>
             <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 text-sm">
-              <th class="p-4 font-medium">Order ID</th>
+              <th class="p-4 font-medium">Order #</th>
               <th class="p-4 font-medium">Item</th>
               <th class="p-4 font-medium">Status</th>
               <th class="p-4 font-medium text-right">Action</th>
@@ -163,7 +170,6 @@
     // INITIALIZATION & LOGIN CHECK
     // ==========================================
     
-    // FIX 2: Correctly reading the milk_user object!
     let currentUser = null;
     
     window.addEventListener('DOMContentLoaded', () => {
@@ -177,7 +183,6 @@
       currentUser = JSON.parse(userStr);
       updateCustomerProfileUI(currentUser.name);
       
-      // Load the data now that we know who is logged in!
       loadProducts();
       loadMyOrders();
     });  
@@ -199,7 +204,6 @@
           }
 
           products.forEach(product => {
-            // FIX 4: Safe image assignment
             let imgUrl = 'https://images.unsplash.com/photo-1628088062854-d1870b4553da?w=500&q=80'; 
             if (product.name && product.name.toLowerCase().includes('milk')) {
               imgUrl = 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=500&q=80';
@@ -297,19 +301,31 @@
     // ==========================================
     // ORDERS TABLE LOGIC
     // ==========================================
+    function toggleOrdersTable() {
+      const container = document.getElementById('orders-table-container');
+      const btnText = document.querySelector('#toggle-orders-btn span');
+      const icon = document.getElementById('toggle-orders-icon');
+      
+      container.classList.toggle('hidden');
+      
+      if (container.classList.contains('hidden')) {
+        btnText.innerText = 'Show';
+        icon.classList.add('rotate-180');
+      } else {
+        btnText.innerText = 'Hide';
+        icon.classList.remove('rotate-180');
+      }
+    }
+
     async function loadMyOrders() {
       if (!currentUser) return;
 
       try {
-        // We fetch ALL orders, then use Javascript to filter them for this specific customer
         const response = await fetch(`${API_BASE}/api/orders`);
         if (response.ok) {
           const allOrders = await response.json();
-          
-          // FIX 4b: Ensure we are dealing with an array, and filter it!
           const orderArray = Array.isArray(allOrders) ? allOrders : (Array.isArray(allOrders?.results) ? allOrders.results : []);
           
-          // Filter out only the orders that belong to the logged-in customer
           const myOrders = orderArray.filter(order => order.customer_name === currentUser.name);
 
           const tbody = document.getElementById('my-orders-body');
@@ -320,6 +336,11 @@
             return;
           }
 
+          // Personal IDs logic
+          myOrders.forEach((order, index) => {
+            order.personalId = index + 1;
+          });
+
           myOrders.reverse().forEach(order => {
             let statusColor = 'bg-yellow-100 text-yellow-800'; 
             if (order.status === 'Accepted') statusColor = 'bg-blue-100 text-blue-800';
@@ -327,18 +348,22 @@
             if (order.status === 'Cancelled' || order.status === 'Rejected') statusColor = 'bg-red-100 text-red-800';
 
             let actionButton = '';
+            
+            // Safe Cancel Button
             if (order.status === 'Pending') {
-              actionButton = `<button onclick="cancelOrder(${order.id})" class="text-xs text-red-600 hover:text-red-800 font-semibold hover:underline">Cancel Order</button>`;
+              actionButton = `<button onclick="cancelOrder(${order.id})" class="text-xs text-red-600 hover:text-red-800 font-semibold hover:underline bg-red-50 px-3 py-1.5 rounded-lg border border-red-100">Cancel</button>`;
+            } else {
+               actionButton = `<span class="text-xs text-slate-400 font-medium cursor-not-allowed">Locked</span>`;
             }
 
             tbody.innerHTML += `
               <tr class="border-b border-slate-50 hover:bg-slate-50">
-                <td class="p-4 text-slate-600">#${order.id}</td>
+                <td class="p-4 text-slate-600 font-medium">#${order.personalId}</td>
                 <td class="p-4 font-medium text-slate-800">${order.item}</td>
                 <td class="p-4">
                   <span class="px-2 py-1 rounded-full text-xs font-semibold ${statusColor}">${order.status}</span>
                 </td>
-                <td class="p-4 text-right">${actionButton}</td>
+                <td class="p-4 text-right whitespace-nowrap">${actionButton}</td>
               </tr>
             `;
           });
