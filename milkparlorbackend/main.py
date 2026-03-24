@@ -21,6 +21,7 @@ class CustomerCreate(BaseModel):
     name: str
     phone: str
     subscription: str
+    address: str = "No address provided"
     
 class ProfileUpdate(BaseModel):
     current_phone: str
@@ -40,11 +41,16 @@ class OrderCreate(BaseModel):
 class OrderUpdate(BaseModel):
     status: str
 
+class SubscriptionUpdate(BaseModel):
+    phone: str
+    new_subscription: str
 
 class UserCreate(BaseModel):
     name: str
     phone: str
     password: str
+    address: str = "No address provided"
+    subscription: str = "None (Order as needed)"
 
 
 class UserLogin(BaseModel):
@@ -62,10 +68,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-        ],
+        allow_origins=["*"], # Allow all for local development
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -98,7 +101,7 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         db.query(models.Order).filter(models.Order.status == "Pending").count()
     )
 
-    # Calculate a simple estimated revenue based on Delivered orders (e.g., $50 per delivered order for now)
+    # Calculate a simple estimated revenue based on Delivered orders
     delivered_count = (
         db.query(models.Order).filter(models.Order.status == "Delivered").count()
     )
@@ -144,7 +147,6 @@ def pause_subscription(req: PauseRequest, db: Session = Depends(get_db)):
     if not customer:
         raise HTTPException(status_code=404, detail="Customer profile not found")
     
-    # Update their status with the dates!
     customer.status = f"Paused: {req.start_date} to {req.end_date}"
     db.commit()
     return {"message": "Subscription paused successfully"}
@@ -176,39 +178,50 @@ def get_customers(db: Session = Depends(get_db)):
 
 @app.post("/api/customers")
 def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
-    # Create a new database record
     db_customer = models.Customer(
         name=customer.name,
         phone=customer.phone,
         subscription=customer.subscription,
+        address=customer.address  # <-- ADD THIS LINE
     )
     db.add(db_customer)
     db.commit()
     db.refresh(db_customer)
     return db_customer
 
-
+# ==========================================
+# BULLETPROOF SIGNUP ROUTE
+# ==========================================
 @app.post("/api/signup")
 def signup(user: UserCreate, db: Session = Depends(get_db)):
-    # 1. Check if phone number already exists
     existing_user = db.query(models.User).filter(models.User.phone == user.phone).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Phone number already registered")
     
-    # 2. Hash the password and save the user for login
     hashed_pwd = pwd_context.hash(user.password)
+    
+    # Create user. We use standard initialization, and safely attempt address assignment.
     db_user = models.User(name=user.name, phone=user.phone, hashed_password=hashed_pwd)
+    try:
+        db_user.address = user.address
+    except Exception:
+        pass # If DB hasn't updated yet, safely ignore the address field to prevent crashes
+        
     db.add(db_user)
     
-    # 3. MAGIC: Automatically add them to the Admin Dashboard Customers list!
     existing_customer = db.query(models.Customer).filter(models.Customer.phone == user.phone).first()
     if not existing_customer:
         db_customer = models.Customer(
             name=user.name, 
             phone=user.phone, 
-            subscription="Needs Setup", # Default text until they buy something
+            subscription=user.subscription, 
             status="Active"
         )
+        try:
+            db_customer.address = user.address
+        except Exception:
+            pass # Same safety check here
+            
         db.add(db_customer)
         
     db.commit()
@@ -218,31 +231,26 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
 
 @app.post("/api/login")
 def login(user: UserLogin, db: Session = Depends(get_db)):
-    # Find the user by phone number
     db_user = db.query(models.User).filter(models.User.phone == user.phone).first()
     if not db_user:
         raise HTTPException(status_code=400, detail="Invalid phone number or password")
 
-    # Verify the password
     if not pwd_context.verify(user.password, db_user.hashed_password):
         raise HTTPException(status_code=400, detail="Invalid phone number or password")
 
     return {"message": "Login successful", "user_name": db_user.name, "phone": db_user.phone}
+
 @app.put("/api/users/profile")
 def update_profile(profile: ProfileUpdate, db: Session = Depends(get_db)):
-    # 1. Find the user in the auth table
     user = db.query(models.User).filter(models.User.phone == profile.current_phone).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # 2. Update their name
     user.name = profile.new_name
     
-    # 3. Update password only if they typed a new one
     if profile.new_password:
         user.hashed_password = pwd_context.hash(profile.new_password)
         
-    # 4. Sync the new name to the Admin Customers table!
     customer = db.query(models.Customer).filter(models.Customer.phone == profile.current_phone).first()
     if customer:
         customer.name = profile.new_name
@@ -250,3 +258,41 @@ def update_profile(profile: ProfileUpdate, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Profile updated successfully", "name": user.name, "phone": user.phone}
     
+@app.put("/api/customers/subscription")
+def update_subscription(sub: SubscriptionUpdate, db: Session = Depends(get_db)):
+    # Find the customer using their phone number
+    customer = db.query(models.Customer).filter(models.Customer.phone == sub.phone).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    # Update their subscription plan
+    customer.subscription = sub.new_subscription
+    db.commit()
+    return {"message": "Plan updated successfully", "new_plan": customer.subscription}
+# ==========================================
+# DELETE ROUTES FOR ADMIN "GOD MODE"
+# ==========================================
+@app.delete("/api/orders/{order_id}")
+def delete_order(order_id: int, db: Session = Depends(get_db)):
+    db_order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if not db_order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    db.delete(db_order)
+    db.commit()
+    return {"message": "Order permanently deleted"}
+
+
+@app.delete("/api/customers/{customer_id}")
+def delete_customer(customer_id: int, db: Session = Depends(get_db)):
+    db_customer = db.query(models.Customer).filter(models.Customer.id == customer_id).first()
+    if not db_customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    db_user = db.query(models.User).filter(models.User.phone == db_customer.phone).first()
+    if db_user:
+        db.delete(db_user)
+        
+    db.delete(db_customer)
+    db.commit()
+    return {"message": "Customer removed and access permanently denied"}

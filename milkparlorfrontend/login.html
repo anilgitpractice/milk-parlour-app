@@ -16,15 +16,34 @@
             <p class="text-sm text-slate-500">Fresh milk delivered daily to your doorstep.</p>
           </div>
           <h2 id="auth-title" class="text-2xl font-bold text-slate-800 mb-6 text-center">Sign In</h2>
+          
           <form id="auth-form" onsubmit="handleAuth(event)" class="space-y-4">
+            
             <div id="name-field" class="hidden">
               <label class="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
               <input type="text" id="auth-name" class="w-full p-3 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500">
             </div>
+
+            <div id="address-field" class="hidden">
+              <label class="block text-sm font-medium text-slate-700 mb-1">Delivery Address</label>
+              <textarea id="auth-address" rows="2" placeholder="House/Flat No, Street, Landmark" class="w-full p-3 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 resize-none"></textarea>
+            </div>
+
+            <div id="subscription-field" class="hidden">
+              <label class="block text-sm font-medium text-slate-700 mb-1">Delivery Plan</label>
+              <select id="auth-subscription" class="w-full p-3 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 bg-white">
+                <option value="None (Order as needed)">Normal User (Order as needed)</option>
+                <option value="Daily 1L Full Cream">Daily 1L Full Cream</option>
+                <option value="Daily 500ml Toned">Daily 500ml Toned</option>
+                <option value="Alternate Days 1L">Alternate Days 1L</option>
+              </select>
+            </div>
+
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
               <input type="text" id="auth-phone" required class="w-full p-3 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500">
             </div>
+
             <div>
                 <div class="flex justify-between items-center mb-1">
                   <label class="block text-sm font-medium text-slate-700">Password</label>
@@ -42,6 +61,7 @@
               </div>
             <button type="submit" id="auth-submit" class="w-full bg-indigo-600 text-white font-medium rounded-lg p-3 hover:bg-indigo-700 transition-colors">Sign In</button>
           </form>
+
           <div class="mt-6 text-center text-sm text-slate-600">
             <span id="auth-toggle-text">Don't have an account?</span>
             <button onclick="toggleMode()" id="auth-toggle-btn" class="text-indigo-600 font-semibold hover:underline ml-1">Sign up</button>
@@ -56,19 +76,37 @@
 
       function toggleMode() {
         isLogin = !isLogin;
+        
+        // Text changes
         document.getElementById('auth-title').innerText = isLogin ? 'Sign In' : 'Create Account';
         document.getElementById('auth-submit').innerText = isLogin ? 'Sign In' : 'Sign Up';
         document.getElementById('auth-toggle-text').innerText = isLogin ? "Don't have an account?" : "Already have an account?";
         document.getElementById('auth-toggle-btn').innerText = isLogin ? 'Sign up' : 'Sign in';
         document.getElementById('forgot-pwd-link').style.display = isLogin ? 'block' : 'none';
         
+        // Field toggling variables
         const nameField = document.getElementById('name-field');
+        const addressField = document.getElementById('address-field');
+        const subField = document.getElementById('subscription-field');
+        
         if (isLogin) {
+          // Hide sign-up fields
           nameField.classList.add('hidden');
+          addressField.classList.add('hidden');
+          subField.classList.add('hidden');
+          
+          // Remove required tags so the login form can submit
           document.getElementById('auth-name').removeAttribute('required');
+          document.getElementById('auth-address').removeAttribute('required');
         } else {
+          // Show sign-up fields
           nameField.classList.remove('hidden');
+          addressField.classList.remove('hidden');
+          subField.classList.remove('hidden');
+          
+          // Add required tags to force user to provide them
           document.getElementById('auth-name').setAttribute('required', 'true');
+          document.getElementById('auth-address').setAttribute('required', 'true');
         }
       }
 
@@ -84,12 +122,19 @@
       async function handleAuth(event) {
         event.preventDefault();
         
+        // Grab values
         const phone = document.getElementById('auth-phone').value;
         const password = document.getElementById('auth-password').value;
         const name = document.getElementById('auth-name').value;
+        const address = document.getElementById('auth-address').value;
+        const subscription = document.getElementById('auth-subscription').value;
 
         const endpoint = isLogin ? '/api/login' : '/api/signup';
-        const payload = isLogin ? { phone, password } : { name, phone, password };
+        
+        // Construct the correct payload
+        const payload = isLogin 
+          ? { phone, password } 
+          : { name, phone, password, address, subscription };
 
         try {
           const response = await fetch(`${API_BASE}${endpoint}`, {
@@ -102,7 +147,14 @@
 
           if (response.ok) {
             // Save the user data in the browser
-            localStorage.setItem('milk_user', JSON.stringify({ name: data.user_name, phone: data.phone }));
+           // localStorage.setItem('milk_user', JSON.stringify({ name: data.user_name, phone: data.phone }));
+           // Save ALL the user data in the browser's memory!
+          localStorage.setItem('milk_user', JSON.stringify({ 
+            name: data.user_name, 
+            phone: data.phone,
+            address: data.address,
+            subscription: data.subscription
+          }));
             
             // Redirect to the customer storefront!
             window.location.href = "store.html";

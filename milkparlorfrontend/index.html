@@ -65,7 +65,7 @@
       </header>
 
       <main class="flex-1 overflow-y-auto p-8" id="content">
-        </main>
+      </main>
       
     </div>
   </div>
@@ -98,30 +98,37 @@
 
     // API CONFIGURATION
     const API_BASE = "http://127.0.0.1:8000";
-    let myChart = null; // Global chart tracker
+    let myChart = null; 
 
     // VIEW TEMPLATES
     const views = {
       home: `
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
           <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
-            <h3 class="text-slate-500 text-xs font-semibold uppercase tracking-wider">Total Revenue</h3>
-            <p id="revenue-display" class="text-2xl font-bold text-slate-800 mt-2">₹...</p>
+            <h3 class="text-slate-500 text-xs font-semibold uppercase tracking-wider">Delivered Revenue</h3>
+            <p id="revenue-display" class="text-2xl font-bold text-emerald-600 mt-2">₹...</p>
           </div>
           <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
             <h3 class="text-slate-500 text-xs font-semibold uppercase tracking-wider">Pending Orders</h3>
-            <p id="orders-display" class="text-2xl font-bold text-slate-800 mt-2">...</p>
+            <p id="orders-display" class="text-2xl font-bold text-amber-500 mt-2">...</p>
           </div>
         </div>
+        
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 mb-6 border-l-4 border-l-amber-400">
+          <h3 class="text-lg font-bold text-slate-800 mb-4">Action Required: Pending Orders</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <tbody id="dashboard-pending-orders" class="text-sm">
+                <tr><td class="p-4 text-center text-slate-500">Checking for new orders...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 mt-6">
         <h3 class="text-lg font-bold text-slate-800 mb-4">Sales by Product</h3>
         <canvas id="salesChart" height="80"></canvas>
       </div>
-        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 mt-6">
-          <h2 class="text-lg font-semibold mb-4">Backend Connection Status</h2>
-          <button onclick="testBackend()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow-sm hover:bg-indigo-700 transition-colors text-sm font-medium">Ping Server</button>
-          <div id="api-status" class="mt-4 p-3 bg-slate-50 rounded text-sm text-slate-600 font-mono hidden"></div>
-        </div>
       `,
       orders: `
         <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 mb-6">
@@ -142,7 +149,7 @@
           </form>
         </div>
         <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-          <h2 class="text-lg font-semibold mb-4">Today's Orders</h2>
+          <h2 class="text-lg font-semibold mb-4">All Orders</h2>
           <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
               <thead>
@@ -164,15 +171,16 @@
       customers: `
         <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 mb-6">
           <h2 class="text-lg font-semibold mb-4">Add New Customer</h2>
-          <form id="add-customer-form" onsubmit="submitCustomer(event)" class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <form id="add-customer-form" onsubmit="submitCustomer(event)" class="grid grid-cols-1 sm:grid-cols-5 gap-4">
             <input type="text" id="cust-name" placeholder="Full Name" required class="p-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500">
             <input type="text" id="cust-phone" placeholder="Phone Number" required class="p-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500">
+            <input type="text" id="cust-address" placeholder="Delivery Address" required class="p-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500">
             <select id="cust-sub" class="p-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-500 bg-white">
               <option value="Daily 1L">Daily 1L</option>
               <option value="Daily 500ml">Daily 500ml</option>
               <option value="Alternate Days 1L">Alternate Days 1L</option>
             </select>
-            <button type="submit" class="bg-indigo-600 text-white font-medium rounded-lg p-2 hover:bg-indigo-700 transition-colors text-sm">Save Customer</button>
+            <button type="submit" class="bg-indigo-600 text-white font-medium rounded-lg p-2 hover:bg-indigo-700 transition-colors text-sm">Save</button>
           </form>
         </div>
         <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
@@ -181,10 +189,10 @@
             <table class="w-full text-left border-collapse">
               <thead>
                 <tr class="border-b border-slate-200 text-slate-500 text-sm">
-                  <th class="p-3 font-medium">Name</th>
+                  <th class="p-3 font-medium">Name & Address</th>
                   <th class="p-3 font-medium">Phone</th>
                   <th class="p-3 font-medium">Subscription</th>
-                  <th class="p-3 font-medium">Status</th>
+                  <th class="p-3 font-medium text-right">Action</th>
                 </tr>
               </thead>
               <tbody id="customers-table-body" class="text-sm">
@@ -220,27 +228,51 @@
     // DASHBOARD DATA FETCHING
     async function loadDashboardStats() {
       try {
+        let priceMap = {};
+        try {
+          const prodRes = await fetch(`${API_BASE}/api/products`);
+          const products = await prodRes.json();
+          products.forEach(p => priceMap[p.name] = p.price);
+        } catch (e) { console.warn("Could not fetch prices"); }
+
         const response = await fetch(`${API_BASE}/api/orders`);
         if (!response.ok) return;
-        const orders = await response.json();
+        
+        const data = await response.json();
+        const orders = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
 
         let pendingCount = 0;
         let totalRevenue = 0;
+        let pendingOrdersHTML = '';
 
-        orders.forEach(order => {
-          if (order.status === 'Pending') pendingCount++;
-          // Calculate revenue based on accepted/delivered orders (using a standard price for now)
-          if (order.status === 'Accepted' || order.status === 'Delivered') {
-            // Give it a generic 50 rupees per item if price isn't in DB yet
-            totalRevenue += order.price || 50; 
+        orders.reverse().forEach(order => {
+          if (order.status === 'Pending') {
+            pendingCount++;
+            pendingOrdersHTML += `
+              <tr class="border-b border-slate-50 hover:bg-slate-50">
+                <td class="p-3 font-medium text-slate-800">${order.customer_name}</td>
+                <td class="p-3 text-slate-600">${order.item}</td>
+                <td class="p-3 text-right">
+                  <button onclick="updateOrderStatus(${order.id}, 'Accepted')" class="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-indigo-700 mr-2">Accept</button>
+                  <button onclick="updateOrderStatus(${order.id}, 'Rejected')" class="text-xs bg-red-50 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg font-semibold hover:bg-red-100">Reject</button>
+                </td>
+              </tr>
+            `;
+          }
+          if (order.status === 'Delivered') {
+            const actualPrice = order.price || priceMap[order.item] || 0; 
+            totalRevenue += actualPrice;
           }
         });
 
         document.getElementById('orders-display').innerText = pendingCount;
         document.getElementById('revenue-display').innerText = `₹${totalRevenue.toFixed(2)}`;
-      } catch (error) {
-        console.error("Failed to load stats:", error);
-      }
+        
+        const pendingContainer = document.getElementById('dashboard-pending-orders');
+        if (pendingContainer) {
+           pendingContainer.innerHTML = pendingOrdersHTML || `<tr><td class="p-4 text-center text-emerald-600 font-medium">All caught up! No pending orders. 🎉</td></tr>`;
+        }
+      } catch (error) { console.error("Failed to load stats:", error); }
     }
 
     async function loadChart() {
@@ -248,49 +280,34 @@
         const response = await fetch(`${API_BASE}/api/orders`);
         if (!response.ok) return;
         const orders = await response.json();
-
         const itemCounts = {};
-        orders.forEach(order => {
-          itemCounts[order.item] = (itemCounts[order.item] || 0) + 1;
-        });
+        orders.forEach(order => { itemCounts[order.item] = (itemCounts[order.item] || 0) + 1; });
 
         const ctx = document.getElementById('salesChart');
         if (!ctx) return; 
-
         if (myChart) myChart.destroy();
-
         myChart = new Chart(ctx.getContext('2d'), {
           type: 'bar',
           data: {
             labels: Object.keys(itemCounts),
-            datasets: [{
-              label: 'Number of Orders',
-              data: Object.values(itemCounts),
-              backgroundColor: 'rgba(79, 70, 229, 0.8)',
-              borderColor: 'rgba(67, 56, 202, 1)',
-              borderWidth: 1,
-              borderRadius: 6
-            }]
+            datasets: [{ label: 'Orders', data: Object.values(itemCounts), backgroundColor: 'rgba(79, 70, 229, 0.8)' }]
           },
           options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
         });
-      } catch (error) {
-        console.error("Error loading chart:", error);
-      }
+      } catch (error) { console.error("Error loading chart:", error); }
     }
 
     // ORDERS LOGIC
     async function loadOrders() {
       const tbody = document.getElementById('orders-table-body');
       if (!tbody) return;
-
       tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-500">Loading orders...</td></tr>`;
 
       try {
         const response = await fetch(`${API_BASE}/api/orders`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const orders = await response.json();
+        const data = await response.json();
+        let orders = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
 
         if (!orders.length) {
           tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-500">No orders found.</td></tr>`;
@@ -298,8 +315,8 @@
         }
 
         tbody.innerHTML = '';
-        orders.forEach(order => {
-          let statusColor = 'bg-yellow-100 text-yellow-800'; 
+        orders.reverse().forEach(order => {
+          let statusColor = 'bg-amber-100 text-amber-800'; 
           if (order.status === 'Accepted') statusColor = 'bg-blue-100 text-blue-800';
           if (order.status === 'Delivered') statusColor = 'bg-emerald-100 text-emerald-800';
           if (order.status === 'Cancelled' || order.status === 'Rejected') statusColor = 'bg-red-100 text-red-800';
@@ -307,13 +324,14 @@
           let actionButton = '';
           if (order.status === 'Pending') {
             actionButton = `
-              <div class="flex justify-end gap-2">
-                <button onclick="updateOrderStatus(${order.id}, 'Accepted')" class="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg font-semibold transition-colors">Accept</button>
+                <button onclick="updateOrderStatus(${order.id}, 'Accepted')" class="text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg font-semibold transition-colors mr-1">Accept</button>
                 <button onclick="updateOrderStatus(${order.id}, 'Rejected')" class="text-xs bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-lg font-semibold transition-colors">Reject</button>
-              </div>`;
+            `;
           } else if (order.status === 'Accepted') {
             actionButton = `<button onclick="updateOrderStatus(${order.id}, 'Delivered')" class="text-xs bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg font-semibold transition-colors">Mark Delivered</button>`;
           }
+
+          const deleteBtn = `<button onclick="deleteOrder(${order.id})" class="text-slate-400 hover:text-red-600 transition-colors ml-3"><i class="fas fa-trash"></i></button>`;
 
           tbody.innerHTML += `
             <tr class="border-b border-slate-50 hover:bg-slate-50">
@@ -321,13 +339,11 @@
               <td class="p-3 font-medium text-slate-800">${order.customer_name}</td>
               <td class="p-3 text-slate-600">${order.item}</td>
               <td class="p-3"><span class="px-2 py-1 rounded-full text-xs font-semibold ${statusColor}">${order.status}</span></td>
-              <td class="p-3 text-right">${actionButton}</td>
+              <td class="p-3 text-right whitespace-nowrap">${actionButton} ${deleteBtn}</td>
             </tr>
           `;
         });
-      } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-red-600">Failed to load orders.</td></tr>`;
-      }
+      } catch (error) { tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-red-600">Failed to load orders.</td></tr>`; }
     }
 
     async function updateOrderStatus(orderId, newStatus) {
@@ -337,15 +353,20 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: newStatus })
         });
-
         if (response.ok) {
-          loadOrders(); 
-        } else {
-          alert("Failed to update order.");
+          const currentTitle = document.getElementById('page-title').innerText;
+          if (currentTitle === 'Dashboard Overview') { loadDashboardStats(); loadChart(); } 
+          else { loadOrders(); }
         }
-      } catch (error) {
-        console.error("Error updating order:", error);
-      }
+      } catch (error) { console.error("Error updating order:", error); }
+    }
+
+    async function deleteOrder(orderId) {
+      if (!confirm("Admin: Are you sure you want to permanently delete this order?")) return;
+      try {
+        const response = await fetch(`${API_BASE}/api/orders/${orderId}`, { method: 'DELETE' });
+        if (response.ok) loadOrders();
+      } catch (error) { console.error("Error deleting order:", error); }
     }
 
     async function submitOrder(event) {
@@ -355,46 +376,60 @@
         item: document.getElementById('order-item').value,
         status: document.getElementById('order-status').value
       };
-
       try {
         const response = await fetch(`${API_BASE}/api/orders`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newOrder)
         });
-        if (response.ok) {
-          document.getElementById('add-order-form').reset();
-          loadOrders();
-        }
-      } catch (error) {
-        console.error("Failed to add order:", error);
-      }
+        if (response.ok) { document.getElementById('add-order-form').reset(); loadOrders(); }
+      } catch (error) { console.error("Failed to add order:", error); }
     }
 
-    // CUSTOMERS LOGIC
+    // CUSTOMERS LOGIC WITH ADDRESS DISPLAY
     async function loadCustomers() {
       try {
         const response = await fetch(`${API_BASE}/api/customers`);
         if (response.ok) {
-          const customers = await response.json();
+          const data = await response.json();
+          let customers = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
           const tbody = document.getElementById('customers-table-body');
           tbody.innerHTML = ''; 
           
-          customers.forEach(customer => {
-            let statusColor = customer.status === 'Active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-800';
+          if (customers.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-500">No customers found.</td></tr>`;
+            return;
+          }
+          
+          customers.reverse().forEach(customer => {
+            const deleteBtn = `<button onclick="deleteCustomer(${customer.id})" class="text-xs text-red-600 hover:text-red-800 font-semibold transition-colors border border-red-200 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg ml-2">Deny & Delete</button>`;
+
+            // Address injects right below the name!
             tbody.innerHTML += `
               <tr class="border-b border-slate-50 hover:bg-slate-50">
-                <td class="p-3 font-medium text-slate-800">${customer.name}</td>
+                <td class="p-3 font-medium text-slate-800">
+                  ${customer.name}
+                  <div class="text-xs text-slate-500 font-normal mt-1 flex items-center gap-1">
+                    <i class="fas fa-map-marker-alt text-slate-400"></i>
+                    ${customer.address || '<span class="italic text-slate-400">No address provided</span>'}
+                  </div>
+                </td>
                 <td class="p-3 text-slate-600">${customer.phone}</td>
-                <td class="p-3 text-slate-600">${customer.subscription}</td>
-                <td class="p-3"><span class="px-2 py-1 rounded-full text-xs font-semibold ${statusColor}">${customer.status}</span></td>
+                <td class="p-3"><span class="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md text-xs font-semibold border border-indigo-100">${customer.subscription || 'None'}</span></td>
+                <td class="p-3 text-right">${deleteBtn}</td>
               </tr>
             `;
           });
         }
-      } catch (error) {
-        console.error("Failed to load customers:", error);
-      }
+      } catch (error) { console.error("Failed to load customers:", error); }
+    }
+
+    async function deleteCustomer(customerId) {
+      if (!confirm("Admin: Are you sure you want to completely remove this customer?")) return;
+      try {
+        const response = await fetch(`${API_BASE}/api/customers/${customerId}`, { method: 'DELETE' });
+        if (response.ok) loadCustomers();
+      } catch (error) { console.error("Error deleting customer:", error); }
     }
 
     async function submitCustomer(event) {
@@ -402,45 +437,21 @@
       const newCustomer = {
         name: document.getElementById('cust-name').value,
         phone: document.getElementById('cust-phone').value,
-        subscription: document.getElementById('cust-sub').value
+        subscription: document.getElementById('cust-sub').value,
+        address: document.getElementById('cust-address').value // Admin can add address manually too
       };
-
       try {
         const response = await fetch(`${API_BASE}/api/customers`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newCustomer)
         });
-        if (response.ok) {
-          document.getElementById('add-customer-form').reset();
-          loadCustomers();
-        }
-      } catch (error) {
-        console.error("Failed to add customer:", error);
-      }
-    }
-
-    // TEST BACKEND
-    async function testBackend() {
-      const statusBox = document.getElementById('api-status');
-      statusBox.classList.remove('hidden');
-      statusBox.innerHTML = `Attempting fetch...`;
-      try {
-        const response = await fetch(`${API_BASE}/`); 
-        if (response.ok) {
-          statusBox.innerHTML = `<span class="text-emerald-600 font-bold">✓ Success!</span>`;
-        } else {
-          statusBox.innerHTML = `<span class="text-red-600 font-bold">✗ Error!</span>`;
-        }
-      } catch (error) {
-        statusBox.innerHTML = `<span class="text-red-600 font-bold">✗ Fetch Failed!</span><br>Is the backend running?`;
-      }
+        if (response.ok) { document.getElementById('add-customer-form').reset(); loadCustomers(); }
+      } catch (error) { console.error("Failed to add customer:", error); }
     }
 
     // Initialize App
-    window.onload = () => {
-      showView('home');
-    };
+    window.onload = () => { showView('home'); };
   </script>
 </body>
 </html>
