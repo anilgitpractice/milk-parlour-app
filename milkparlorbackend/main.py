@@ -176,14 +176,33 @@ def get_customers(db: Session = Depends(get_db)):
     return customers
 
 
+#@app.post("/api/customers")
+#def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
+#    db_customer = models.Customer(
+#        name=customer.name,
+#        phone=customer.phone,
+#        subscription=customer.subscription,
+#        address=customer.address  # <-- ADD THIS LINE
+#    )
+#    db.add(db_customer)
+#    db.commit()
+#    db.refresh(db_customer)
+#    return db_customer
 @app.post("/api/customers")
 def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
+    # 1. Initialize safely WITHOUT the address inside the parenthesis
     db_customer = models.Customer(
         name=customer.name,
         phone=customer.phone,
-        subscription=customer.subscription,
-        address=customer.address  # <-- ADD THIS LINE
+        subscription=customer.subscription
     )
+    
+    # 2. Force the address in afterward using a safety net
+    try:
+        db_customer.address = customer.address
+    except Exception:
+        pass 
+        
     db.add(db_customer)
     db.commit()
     db.refresh(db_customer)
@@ -194,70 +213,83 @@ def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
 # ==========================================
 @app.post("/api/signup")
 def signup(user: UserCreate, db: Session = Depends(get_db)):
-    existing_user = db.query(models.User).filter(models.User.phone == user.phone).first()
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Phone number already registered")
-    
-    hashed_pwd = pwd_context.hash(user.password)
-    
-    # Create user. We use standard initialization, and safely attempt address assignment.
-    db_user = models.User(name=user.name, phone=user.phone, hashed_password=hashed_pwd)
     try:
-        db_user.address = user.address
-    except Exception:
-        pass # If DB hasn't updated yet, safely ignore the address field to prevent crashes
+        existing_user = db.query(models.User).filter(models.User.phone == user.phone).first()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Phone number already registered")
         
-    db.add(db_user)
-    
-    existing_customer = db.query(models.Customer).filter(models.Customer.phone == user.phone).first()
-    if not existing_customer:
-        db_customer = models.Customer(
-            name=user.name, 
-            phone=user.phone, 
-            subscription=user.subscription, 
-            status="Active"
-        )
-        try:
-            db_customer.address = user.address
-        except Exception:
-            pass # Same safety check here
+        hashed_pwd = pwd_context.hash(user.password)
+        
+        db_user = models.User(name=user.name, phone=user.phone, hashed_password=hashed_pwd)
+        if user.address:
+            db_user.address = user.address
+        db.add(db_user)
+        
+        existing_customer = db.query(models.Customer).filter(models.Customer.phone == user.phone).first()
+        if not existing_customer:
+            db_customer = models.Customer(name=user.name, phone=user.phone, subscription=user.subscription, status="Active")
+            if user.address:
+                db_customer.address = user.address
+            db.add(db_customer)
             
-        db.add(db_customer)
+        db.commit()
         
-    db.commit()
-    db.refresh(db_user)
-    return {"message": "User created successfully", "user_name": db_user.name, "phone": db_user.phone}
+        return {
+            "message": "User created successfully", 
+            "user_name": db_user.name, 
+            "phone": db_user.phone,
+            "address": user.address or "No address provided",
+            "subscription": user.subscription or "None (Order as needed)"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Backend Crash during signup: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 @app.post("/api/login")
 def login(user: UserLogin, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.phone == user.phone).first()
-    if not db_user:
-        raise HTTPException(status_code=400, detail="Invalid phone number or password")
-
-    if not pwd_context.verify(user.password, db_user.hashed_password):
-        raise HTTPException(status_code=400, detail="Invalid phone number or password")
-
-    return {"message": "Login successful", "user_name": db_user.name, "phone": db_user.phone}
-
-@app.put("/api/users/profile")
-def update_profile(profile: ProfileUpdate, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.phone == profile.current_phone).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    user.name = profile.new_name
-    
-    if profile.new_password:
-        user.hashed_password = pwd_context.hash(profile.new_password)
+    try:
+        db_user = db.query(models.User).filter(models.User.phone == user.phone).first()
+        if not db_user:
+            raise HTTPException(status_code=400, detail="Invalid phone number or password")
         
-    customer = db.query(models.Customer).filter(models.Customer.phone == profile.current_phone).first()
-    if customer:
-        customer.name = profile.new_name
+        # Safely get the password to prevent AttributeError
+        stored_password = getattr(db_user, 'hashed_password', None)
+        if not stored_password or not pwd_context.verify(user.password, stored_password):
+            raise HTTPException(status_code=400, detail="Invalid phone number or password")
+
+        customer = db.query(models.Customer).filter(models.Customer.phone == user.phone).first()
         
-    db.commit()
-    return {"message": "Profile updated successfully", "name": user.name, "phone": user.phone}
-    
+        # Safely set defaults
+        sub_status = "None (Order as needed)"
+        address = "No address provided"
+        
+        if customer:
+            # ULTIMATE SAFETY: getattr prevents the app from crashing if the column is missing
+            customer_sub = getattr(customer, 'subscription', None)
+            if customer_sub: 
+                sub_status = customer_sub
+                
+            customer_addr = getattr(customer, 'address', None)
+            if customer_addr: 
+                address = customer_addr
+
+        return {
+            "message": "Login successful", 
+            "user_name": db_user.name, 
+            "phone": db_user.phone,
+            "address": address,
+            "subscription": sub_status
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Backend Crash during login: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
 @app.put("/api/customers/subscription")
 def update_subscription(sub: SubscriptionUpdate, db: Session = Depends(get_db)):
     # Find the customer using their phone number

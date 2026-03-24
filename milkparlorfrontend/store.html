@@ -74,6 +74,19 @@
   </div>
 
   <main class="max-w-6xl mx-auto p-6 mt-6">
+    <div class="bg-indigo-50/70 border border-indigo-100 rounded-2xl p-5 mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm">
+      <div class="flex items-start gap-3">
+        <svg class="w-5 h-5 text-indigo-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        <div>
+          <p class="text-xs font-bold uppercase tracking-wider text-indigo-900/60 mb-0.5">Delivery Address</p>
+          <p id="ui-display-address" class="text-sm font-medium text-indigo-950">Loading address...</p>
+        </div>
+      </div>
+      <div class="bg-white px-4 py-2 rounded-lg border border-indigo-50 shadow-sm text-sm">
+        <span class="text-slate-500 font-medium">Current Plan:</span> 
+        <span id="ui-display-plan" class="font-bold text-indigo-700 ml-1">Loading...</span>
+      </div>
+    </div>
     <h2 class="text-2xl font-bold text-slate-800 mb-6">Fresh Products</h2>
     <div id="products-grid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
       <div class="col-span-full text-center text-slate-500 py-10">Loading products...</div>
@@ -200,6 +213,10 @@
       
       currentUser = JSON.parse(userStr);
       updateCustomerProfileUI(currentUser.name);
+      
+      // ADD THESE TWO LINES TO FILL THE BANNER
+      document.getElementById('ui-display-address').innerText = currentUser.address || 'No address on file';
+      document.getElementById('ui-display-plan').innerText = currentUser.subscription || 'Order as needed';
       
       loadProducts();
       loadMyOrders();
