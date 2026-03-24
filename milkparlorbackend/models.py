@@ -15,7 +15,7 @@ class Customer(Base):
     phone = Column(String)
     subscription = Column(String)
     status = Column(String, default="Active")
-    address = Column(String)
+    address = Column(String, default="No address provided")
 
 class Order(Base):
     __tablename__ = "orders"
@@ -30,4 +30,4 @@ class User(Base):
     name = Column(String)
     phone = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    address = Column(String)
+    address = Column(String, default="No address provided")

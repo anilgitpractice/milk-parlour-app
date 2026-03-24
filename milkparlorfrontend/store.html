@@ -153,6 +153,25 @@
         </button>
       </form>
     </div>
+
+    <h2 id="profile-section" class="text-2xl font-bold text-slate-800 mt-12 mb-6 border-t pt-8 border-slate-200">Update Profile & Address</h2>
+    <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-12">
+      <form id="update-profile-form" onsubmit="handleProfileUpdate(event)" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+              <label for="edit-name" class="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
+              <input type="text" id="edit-name" required class="p-2 border border-slate-200 rounded-lg text-sm w-full focus:outline-none focus:border-indigo-500">
+          </div>
+          <div>
+              <label for="edit-address" class="block text-xs font-semibold text-slate-700 mb-1">Delivery Address</label>
+              <input type="text" id="edit-address" required placeholder="House No, Street, Landmark" class="p-2 border border-slate-200 rounded-lg text-sm w-full focus:outline-none focus:border-indigo-500">
+          </div>
+        </div>
+        <button type="submit" class="bg-indigo-600 text-white font-medium rounded-lg px-6 py-2 hover:bg-indigo-700 transition-colors text-sm">
+            Save Changes
+        </button>
+      </form>
+    </div>
   </main>
 
   <script>
@@ -214,9 +233,13 @@
       currentUser = JSON.parse(userStr);
       updateCustomerProfileUI(currentUser.name);
       
-      // ADD THESE TWO LINES TO FILL THE BANNER
+      // Auto-fill the banner
       document.getElementById('ui-display-address').innerText = currentUser.address || 'No address on file';
       document.getElementById('ui-display-plan').innerText = currentUser.subscription || 'Order as needed';
+      
+      // Auto-fill the edit form
+      document.getElementById('edit-name').value = currentUser.name || '';
+      document.getElementById('edit-address').value = (currentUser.address === 'No address provided') ? '' : (currentUser.address || '');
       
       loadProducts();
       loadMyOrders();
@@ -302,6 +325,48 @@
     }
 
     // ==========================================
+    // PROFILE UPDATE LOGIC
+    // ==========================================
+    async function handleProfileUpdate(event) {
+      event.preventDefault();
+      if (!currentUser) return;
+
+      const newName = document.getElementById('edit-name').value;
+      const newAddress = document.getElementById('edit-address').value;
+
+      try {
+        const response = await fetch(`${API_BASE}/api/users/profile`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            current_phone: currentUser.phone,
+            new_name: newName,
+            new_address: newAddress
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          
+          // 1. Update the browser's memory
+          currentUser.name = data.name;
+          currentUser.address = data.address;
+          localStorage.setItem('milk_user', JSON.stringify(currentUser));
+          
+          // 2. Instantly update the UI without reloading
+          updateCustomerProfileUI(currentUser.name);
+          document.getElementById('ui-display-address').innerText = currentUser.address;
+          
+          alert("Success! Your address has been updated for the delivery team.");
+        } else {
+          alert("Failed to update profile.");
+        }
+      } catch (error) {
+        console.error("Profile update error:", error);
+      }
+    }
+
+    // ==========================================
     // SUBSCRIPTION / PAUSE LOGIC
     // ==========================================
     async function handlePause(event) {
@@ -332,6 +397,7 @@
         console.error("Pause error:", error);
       }
     }
+
     async function handlePlanUpdate(event) {
       event.preventDefault();
       if (!currentUser) {

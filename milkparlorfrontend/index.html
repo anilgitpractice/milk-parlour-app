@@ -189,12 +189,16 @@
             <table class="w-full text-left border-collapse">
               <thead>
                 <tr class="border-b border-slate-200 text-slate-500 text-sm">
-                  <th class="p-3 font-medium">Name & Address</th>
+                  <th class="p-3 font-medium">Name</th>
+                  <th class="p-3 font-medium">Address</th>
                   <th class="p-3 font-medium">Phone</th>
                   <th class="p-3 font-medium">Subscription</th>
                   <th class="p-3 font-medium text-right">Action</th>
                 </tr>
               </thead>
+              <tbody id="customers-table-body" class="text-sm">
+                <tr><td colspan="5" class="p-4 text-center text-slate-500">Loading customers...</td></tr>
+              </tbody>
               <tbody id="customers-table-body" class="text-sm">
                 <tr><td colspan="4" class="p-4 text-center text-slate-500">Loading customers...</td></tr>
               </tbody>
@@ -397,23 +401,24 @@
           tbody.innerHTML = ''; 
           
           if (customers.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-500">No customers found.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-500">No customers found.</td></tr>`;
             return;
           }
           
           customers.reverse().forEach(customer => {
             const deleteBtn = `<button onclick="deleteCustomer(${customer.id})" class="text-xs text-red-600 hover:text-red-800 font-semibold transition-colors border border-red-200 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg ml-2">Deny & Delete</button>`;
 
-            // Address injects right below the name!
+            // Check if address exists and isn't the default blank string
+            let displayAddress = customer.address;
+            if (!displayAddress || displayAddress === 'No address provided' || displayAddress.trim() === '') {
+                displayAddress = '<span class="italic text-slate-400">No address provided</span>';
+            }
+
+            // Exactly 5 columns to match our new headers!
             tbody.innerHTML += `
               <tr class="border-b border-slate-50 hover:bg-slate-50">
-                <td class="p-3 font-medium text-slate-800">
-                  ${customer.name}
-                  <div class="text-xs text-slate-500 font-normal mt-1 flex items-center gap-1">
-                    <i class="fas fa-map-marker-alt text-slate-400"></i>
-                    ${customer.address || '<span class="italic text-slate-400">No address provided</span>'}
-                  </div>
-                </td>
+                <td class="p-3 font-medium text-slate-800">${customer.name}</td>
+                <td class="p-3 text-sm text-slate-600">${displayAddress}</td>
                 <td class="p-3 text-slate-600">${customer.phone}</td>
                 <td class="p-3"><span class="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md text-xs font-semibold border border-indigo-100">${customer.subscription || 'None'}</span></td>
                 <td class="p-3 text-right">${deleteBtn}</td>
@@ -421,9 +426,11 @@
             `;
           });
         }
-      } catch (error) { console.error("Failed to load customers:", error); }
+      } catch (error) { 
+        console.error("Failed to load customers:", error); 
+      }
     }
-
+    
     async function deleteCustomer(customerId) {
       if (!confirm("Admin: Are you sure you want to completely remove this customer?")) return;
       try {

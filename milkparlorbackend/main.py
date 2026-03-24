@@ -6,7 +6,7 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from routers import auth, subscription, inventory, chatbot
+#from routers import auth, subscription, inventory, chatbot
 import models
 from database import engine, get_db
 from seed import seed_on_startup
@@ -26,6 +26,7 @@ class CustomerCreate(BaseModel):
 class ProfileUpdate(BaseModel):
     current_phone: str
     new_name: str
+    new_address: str = None
     new_password: str = None  # Optional, in case they only want to change their name
 
 class AdminLogin(BaseModel):
@@ -74,10 +75,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
-    app.include_router(subscription.router, prefix="/subscriptions", tags=["Subscriptions"])
-    app.include_router(inventory.router, prefix="/inventory", tags=["Inventory"])
-    app.include_router(chatbot.router, prefix="/chatbot", tags=["Chatbot"])
+ #   app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+ #   app.include_router(subscription.router, prefix="/subscriptions", tags=["Subscriptions"])
+ #   app.include_router(inventory.router, prefix="/inventory", tags=["Inventory"])
+ #   app.include_router(chatbot.router, prefix="/chatbot", tags=["Chatbot"])
 
     @app.on_event("startup")
     def _startup() -> None:
@@ -173,8 +174,21 @@ def update_order_status(order_id: int, order_update: OrderUpdate, db: Session = 
 @app.get("/api/customers")
 def get_customers(db: Session = Depends(get_db)):
     customers = db.query(models.Customer).all()
-    return customers
-
+    
+    # Forcefully map every single column into a clean dictionary
+    # This guarantees the 'address' key is sent to the browser!
+    result = []
+    for c in customers:
+        result.append({
+            "id": c.id,
+            "name": c.name,
+            "phone": c.phone,
+            "subscription": c.subscription,
+            "status": c.status,
+            "address": getattr(c, 'address', "No address provided")
+        })
+        
+    return result
 
 @app.post("/api/customers")
 def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
@@ -203,27 +217,24 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
     
     hashed_pwd = pwd_context.hash(user.password)
     
-    # 1. Create User safely WITHOUT address in the parenthesis
+    # STRICT SAVING: Address is inside the parenthesis!
     db_user = models.User(
         name=user.name, 
         phone=user.phone, 
-        hashed_password=hashed_pwd
+        hashed_password=hashed_pwd,
+        address=user.address
     )
-    # Bypass the strict keyword checker
-    db_user.address = user.address
     db.add(db_user)
     
-    # 2. Create Customer safely WITHOUT address in the parenthesis
     existing_customer = db.query(models.Customer).filter(models.Customer.phone == user.phone).first()
     if not existing_customer:
         db_customer = models.Customer(
             name=user.name, 
             phone=user.phone, 
             subscription=user.subscription, 
-            status="Active"
+            status="Active",
+            address=user.address
         )
-        # Bypass the strict keyword checker
-        db_customer.address = user.address
         db.add(db_customer)
         
     db.commit()
@@ -236,7 +247,6 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
         "address": db_user.address,
         "subscription": user.subscription
     }
-
 
 @app.post("/api/login")
 def login(user: UserLogin, db: Session = Depends(get_db)):
@@ -266,7 +276,48 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
         "address": address,
         "subscription": sub_status
     }
+
+@app.put("/api/users/profile")
+def update_profile(profile: ProfileUpdate, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.phone == profile.current_phone).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     
+    # 1. Standard assignment so SQLAlchemy is FORCED to save it!
+    user.name = profile.new_name
+    if profile.new_address and profile.new_address.strip() != "":
+        user.address = profile.new_address
+        
+    if profile.new_password:
+        user.hashed_password = pwd_context.hash(profile.new_password)
+        
+    # 2. Update the Admin's Customer directory
+    customer = db.query(models.Customer).filter(models.Customer.phone == profile.current_phone).first()
+    if customer:
+        customer.name = profile.new_name
+        if profile.new_address and profile.new_address.strip() != "":
+            customer.address = profile.new_address
+    else:
+        # If this is an old ghost user, they don't have a customer record! Let's build one.
+        new_customer = models.Customer(
+            name=profile.new_name,
+            phone=profile.current_phone,
+            address=profile.new_address or "No address provided",
+            subscription="None (Order as needed)",
+            status="Active"
+        )
+        db.add(new_customer)
+            
+    db.commit()
+    db.refresh(user) # Refresh to ensure we get the latest saved data
+    
+    return {
+        "message": "Profile updated successfully", 
+        "name": user.name, 
+        "phone": user.phone,
+        "address": user.address
+    }
+
 # ==========================================
 # DELETE ROUTES FOR ADMIN "GOD MODE"
 # ==========================================
